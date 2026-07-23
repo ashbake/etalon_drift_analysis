@@ -5,7 +5,6 @@ import glob, sys
 
 import ccf
 
-
 def load_parvi_data(filename):
     """
     load filename of parvi spectral file
@@ -33,11 +32,64 @@ def load_parvi_data(filename):
 
     return [wave_sci, flux_sci, err_sci], [wave_cal, flux_cal, err_cal]
 
+def load_parvi_metadata(filename):
+    """load PARVI """
+    hdr = fits.getheader(filename)
+    return hdr['TIMEWMJD']
+
+
+def get_palomar_location():
+    """EarthLocation for the P200 Hale telescope (matches LAT/LONG/ELEVSEA in PARVI headers)."""
+    from astropy.coordinates import EarthLocation
+    return EarthLocation.of_site('Palomar')
+
+
+def compute_airmass_barycorr(mjd, ra_deg, dec_deg, location=None):
+    """Compute airmass (sec z) and barycentric RV correction for target coords at given MJD(s).
+
+    mjd:            float or array, MJD (UTC, mid-exposure e.g. header TIMEWMJD)
+    ra_deg, dec_deg: target ICRS coordinates in degrees (e.g. from SkyCoord.from_name)
+    location:       astropy EarthLocation, defaults to Palomar (P200)
+
+    Returns (airmass, barycorr_kms), each same shape as input mjd.
+    barycorr_kms is the velocity to ADD to an observed (topocentric) RV to
+    shift it into the solar system barycentric frame.
+    """
+    import astropy.units as u
+    from astropy.time import Time
+    from astropy.coordinates import SkyCoord, AltAz
+
+    if location is None:
+        location = get_palomar_location()
+
+    scalar_input = np.isscalar(mjd)
+    time = Time(np.atleast_1d(mjd), format='mjd', scale='utc')
+    target = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame='icrs')
+
+    altaz = target.transform_to(AltAz(obstime=time, location=location))
+    airmass = altaz.secz.value
+
+    barycorr = target.radial_velocity_correction(
+        kind='barycentric', obstime=time, location=location
+    ).to(u.km / u.s).value
+
+    if scalar_input:
+        return airmass[0], barycorr[0]
+    return airmass, barycorr
+
+
+
 def load_wavelength_array(filename='/Altair_R02_20251017031228_deg0_sp.fits'):
     """loads old altair file to get old wavelength solution which shouldn't need to be accurate here
     because parvi data doesn't always have wavelengths stored (TODO to fix this)"""
-    test_sci, test_cal = load_parvi_data(filename)
-    return test_sci[0], test_cal[0]
+    f = fits.open(filename)
+    science_extension = 2 # ch3?
+    cal_extension = 4 # ch1?
+
+    wave_sci = f[science_extension].data[0, :, :]
+    wave_cal = f[cal_extension].data[0, :, :]
+  
+    return wave_sci, wave_cal
 
 def build_master_flux(files, channel):
     """Stack and average flux arrays from a list of files for one channel.
