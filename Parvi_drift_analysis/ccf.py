@@ -374,11 +374,12 @@ def fit_gaussian_to_ccf_2(velocity_ccfloop, ccfout, rv_guess, velocity_halfrange
     rv_fit = bestfit[0][0]
     xi2 = sum((gaussian_fwhm(velocity_ccfloop,*p0) - ccfout)**2)
     mean,stddev,amplitude,offset = p0
+    # these were set for a different case, may not apply always
     if amplitude > 0  \
     or mean > np.max(velocity_ccfloop) \
     or mean < np.min(velocity_ccfloop) \
     or stddev < 0.1:
-        print('No significant peak found in CCF')
+        print(f'Warning: mean,stddev,amplitude,offset={p0}')
 
     return rv_fit, velocity_ccfloop[i_fit],gaussian_fwhm(velocity_ccfloop[i_fit],*p0),xi2
 
